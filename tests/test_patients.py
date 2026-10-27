@@ -1,7 +1,10 @@
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy.exc import OperationalError
+from app.core.config import Settings
 from app.schemas.patient import PatientCreate, PatientUpdate
 from app.voice.vapi import vapi_tool_schemas
 
@@ -185,3 +188,17 @@ def test_vapi_tool_schemas_match_patient_models():
     update_schema = tools["update_patient_record"]["function"]["parameters"]
     assert set(update_schema["properties"]) >= set(PatientUpdate.model_fields) | {"patient_id", "caller_confirmed"}
     assert update_schema["required"] == ["patient_id", "caller_confirmed"]
+
+
+def test_production_configuration_rejects_ephemeral_sqlite_database():
+    with pytest.raises(ValidationError, match="persistent PostgreSQL"):
+        Settings(app_env="production", database_url="sqlite:///./patients.db")
+
+
+def test_postgres_engine_pool_is_limited_per_serverless_instance():
+    from app.db.session import _engine_options
+
+    options = _engine_options("postgresql+psycopg://db.example/test")
+    assert options["pool_size"] == 1
+    assert options["max_overflow"] == 0
+    assert options["pool_pre_ping"] is True

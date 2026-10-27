@@ -14,6 +14,10 @@ def _engine_options(url: str) -> dict:
     options = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
         options["connect_args"] = {"check_same_thread": False}
+    else:
+        # Each Vercel function instance owns its own engine. Keep the per-instance
+        # connection count small so horizontal scaling does not exhaust Postgres.
+        options.update(pool_size=1, max_overflow=0)
     return options
 
 

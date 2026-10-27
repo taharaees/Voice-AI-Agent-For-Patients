@@ -24,7 +24,7 @@ Caller <-> Vapi (telephony, transcription, LLM, speech)
 
 ## Local setup
 
-Requires Python 3.12 or newer.
+Requires Python 3.14 for deployment parity (Vercel supports Python 3.12, 3.13, and 3.14).
 
 ```bash
 python3 -m venv .venv
@@ -40,11 +40,11 @@ The local SQLite database is `patients.db` in the working directory. Visit `http
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `APP_ENV` | No | `development` locally or `production` on Render. |
-| `DATABASE_URL` | No locally; yes for deployed persistence | SQLAlchemy URL. Local default is `sqlite:///./patients.db`. Set the Supabase PostgreSQL connection string for deployment. `postgres://` and `postgresql://` URLs are normalized to the psycopg 3 driver. Use the Supabase connection mode/network details appropriate for your Render region, and include required SSL parameters. |
+| `APP_ENV` | No | `development` locally or `production` on Vercel/Render. Production refuses the local SQLite default. |
+| `DATABASE_URL` | No locally; required in production | SQLAlchemy URL. Local default is `sqlite:///./patients.db`. Set the Supabase PostgreSQL connection string for deployment. `postgres://` and `postgresql://` URLs are normalized to the psycopg 3 driver. Use an appropriate Supabase PostgreSQL connection URL and any required SSL parameters. |
 | `API_KEY` | Recommended in deployment | If set, protect every `/patients` request with `Authorization: Bearer <API_KEY>`. The health endpoint remains public. |
 | `VAPI_SERVER_SECRET` | Recommended for Vapi | Shared webhook token. Configure a Vapi Bearer Token credential with this value and attach it to the Function tool server. |
-| `PUBLIC_API_BASE_URL` | Required for Vapi tools | Public HTTPS base URL of this service, e.g. `https://your-service.onrender.com`. It is used to generate the Vapi Function tool webhook URL. |
+| `PUBLIC_API_BASE_URL` | Required for Vapi tools | Public HTTPS base URL of this service, e.g. `https://your-project.vercel.app`. It is used to generate the Vapi Function tool webhook URL. |
 | `VAPI_ASSISTANT_ID` | Optional | Reserved for recording the configured assistant ID in the deployment environment. |
 
 Never commit `.env`, API keys, provider credentials, or real patient data. Use fictional records only. Successful create/update logs record the operation and patient UUID, not full demographic payloads, to avoid putting sensitive data in service logs.
@@ -126,6 +126,23 @@ Provider references: [Vapi Function tools](https://docs.vapi.ai/tools/custom-too
 6. Confirm deployed tests locally with `pytest -q`, place an inbound test call, and share the repository URL, U.S. phone number, API base URL, and reviewer notes.
 
 `render.yaml` requests generated secrets and leaves database URL and public service URL for the owner to set. Do not add secrets to the repository. Tables are created automatically at application startup; backups and production migrations are not configured.
+
+## Vercel deployment
+
+Vercel detects the FastAPI instance exported as `app` from `app/main.py`; this is a supported entrypoint under the `app/` directory. No `vercel.json`, `/api` wrapper, build command, output directory, Uvicorn start command, or `PORT` setting is needed. `render.yaml` remains for the previous Render setup and is not used by Vercel.
+
+1. Push the repository to GitHub, then import it into Vercel as a new project. Keep the project root at the repository root.
+2. Leave the Build Command and Output Directory at their Vercel defaults; Vercel installs the packages from `requirements.txt`. `.python-version` pins the runtime to Python 3.14.
+3. In **Project Settings → Environment Variables**, add the following for Production (and Preview/Development only when needed):
+   - `APP_ENV` = `production`
+   - `DATABASE_URL` = the existing Supabase PostgreSQL connection URL
+   - `PUBLIC_API_BASE_URL` = the Vercel HTTPS URL assigned to the project, such as `https://your-project.vercel.app`
+   - `VAPI_SERVER_SECRET` = a strong secret; set the matching Vapi Bearer Token credential separately in Vapi
+   - `API_KEY` = optional but recommended if clients use the REST `/patients` routes
+4. Redeploy after adding or changing environment variables. Vercel functions have no persistent writable project filesystem; production startup rejects SQLite, and patient data remains in Supabase. Each function instance creates one SQLAlchemy engine with a one-connection pool. Startup still calls `create_all()` to create missing tables; it is not a migration mechanism.
+5. Check `https://<your-project>.vercel.app/health`, then test patient routes with fictional data. Update the Vapi Function server URL to `https://<your-project>.vercel.app/vapi/webhook`, configure its Bearer Token credential to match `VAPI_SERVER_SECRET`, and regenerate tool JSON with `PUBLIC_API_BASE_URL` set to the Vercel URL.
+
+No Vercel-specific build or deployment file is needed for this project. Hobby plan function limits are sufficient for these synchronous API requests; Vercel's plan terms and current account usage still apply.
 
 ## Limitations and next steps
 

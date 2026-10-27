@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +11,12 @@ class Settings(BaseSettings):
     public_api_base_url: str = "http://localhost:8000"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @model_validator(mode="after")
+    def require_persistent_database_in_production(self):
+        if self.app_env.lower() == "production" and self.database_url.startswith("sqlite"):
+            raise ValueError("Production requires DATABASE_URL to point to a persistent PostgreSQL database")
+        return self
 
 
 settings = Settings()
